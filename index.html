@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webflow Variables CSV Generator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card" aria-label="Webflow variables generator">
+        <h1>Webflow Variables CSV Generator</h1>
+        <p class="subtitle">Fill in your design tokens and export a ready-to-import CSV.</p>
+
+        <form id="generator-form" novalidate>
+          <div class="field-group">
+            <label for="primary-color">Primary color</label>
+            <div class="color-input-row">
+              <input id="primary-color" name="primary-color" type="color" value="#3B82F6" />
+              <input
+                id="primary-hex"
+                name="primary-hex"
+                type="text"
+                value="#3B82F6"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Primary color hex value"
+              />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="secondary-color">Secondary color</label>
+            <div class="color-input-row">
+              <input id="secondary-color" name="secondary-color" type="color" value="#EC4899" />
+              <input
+                id="secondary-hex"
+                name="secondary-hex"
+                type="text"
+                value="#EC4899"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Secondary color hex value"
+              />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="display-font">Display font</label>
+            <input id="display-font" name="display-font" type="text" placeholder="e.g. Inter Tight" required />
+          </div>
+
+          <div class="field-group">
+            <label for="body-font">Body font</label>
+            <input id="body-font" name="body-font" type="text" placeholder="e.g. Inter" required />
+          </div>
+
+          <div class="field-group">
+            <label for="base-size">Base font size (px)</label>
+            <input id="base-size" name="base-size" type="number" min="1" step="1" value="16" required />
+          </div>
+
+          <p id="status" class="status" role="status" aria-live="polite"></p>
+
+          <div class="button-row">
+            <button id="generate-btn" type="button">Generate</button>
+            <button id="download-btn" type="button" disabled>Download CSV</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
