@@ -1,18 +1,51 @@
 (function () {
-  const formElements = {
-    primaryColor: document.getElementById('primary-color'),
-    primaryHex: document.getElementById('primary-hex'),
-    secondaryColor: document.getElementById('secondary-color'),
-    secondaryHex: document.getElementById('secondary-hex'),
-    displayFont: document.getElementById('display-font'),
-    bodyFont: document.getElementById('body-font'),
-    baseSize: document.getElementById('base-size'),
-    generateButton: document.getElementById('generate-btn'),
-    downloadButton: document.getElementById('download-btn'),
-    status: document.getElementById('status')
+  const MIN_COLORS = 2;
+  const MAX_COLORS = 5;
+
+  const colorList = document.getElementById('color-list');
+  const addColorButton = document.getElementById('add-color');
+  const removeColorButton = document.getElementById('remove-color');
+  const previewCount = document.getElementById('preview-count');
+  const status = document.getElementById('status');
+  const form = document.getElementById('generator-form');
+
+  const fontInputs = {
+    Display: document.getElementById('font-display'),
+    Body: document.getElementById('font-body'),
+    Mono: document.getElementById('font-mono')
   };
 
-  let generatedCsv = '';
+  const baseSizeInput = document.getElementById('base-size');
+
+  const defaultColors = [
+    { label: 'Primary', hex: '#3D5A80' },
+    { label: 'Accent', hex: '#EE6C4D' }
+  ];
+
+  function createColorRow(data) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'color-row';
+
+    wrapper.innerHTML =
+      '<label class="field"><span>Label</span><input type="text" class="color-label" /></label>' +
+      '<label class="field"><span>Hex</span><input type="text" class="color-hex mono" maxlength="7" placeholder="#RRGGBB" /></label>' +
+      '<p class="inline-error" aria-live="polite"></p>';
+
+    const labelInput = wrapper.querySelector('.color-label');
+    const hexInput = wrapper.querySelector('.color-hex');
+
+    labelInput.value = data.label;
+    hexInput.value = data.hex;
+
+    [labelInput, hexInput].forEach(function (input) {
+      input.addEventListener('input', function () {
+        validateColorRow(wrapper);
+        updatePreviewCount();
+      });
+    });
+
+    colorList.appendChild(wrapper);
+  }
 
   function normalizeHex(value) {
     const cleaned = value.trim().replace(/^#/, '').toUpperCase();
@@ -22,225 +55,369 @@
     return null;
   }
 
-  function hexToRgb(hex) {
-    const parsed = normalizeHex(hex);
-    if (!parsed) {
-      return null;
+  function validateColorRow(row) {
+    const label = row.querySelector('.color-label').value.trim();
+    const hexInput = row.querySelector('.color-hex');
+    const error = row.querySelector('.inline-error');
+    const normalized = normalizeHex(hexInput.value);
+
+    if (!label) {
+      error.textContent = 'Label is required.';
+      return false;
     }
 
+    if (!normalized) {
+      error.textContent = 'Enter a valid 6-digit hex color (#RRGGBB).';
+      return false;
+    }
+
+    hexInput.value = normalized;
+    error.textContent = '';
+    return true;
+  }
+
+  function getColorInputs() {
+    const rows = Array.from(colorList.querySelectorAll('.color-row'));
+    return rows.map(function (row) {
+      return {
+        label: row.querySelector('.color-label').value.trim(),
+        hex: row.querySelector('.color-hex').value.trim(),
+        row: row
+      };
+    });
+  }
+
+  function getFontInputs() {
+    const fonts = [];
+    Object.keys(fontInputs).forEach(function (label) {
+      const value = fontInputs[label].value.trim();
+      if (value) {
+        fonts.push({ label: label, value: value });
+      }
+    });
+    return fonts;
+  }
+
+  function updatePreviewCount() {
+    const colors = getColorInputs();
+    const fonts = getFontInputs();
+    const validColorCount = colors.filter(function (c) {
+      return c.label && normalizeHex(c.hex);
+    }).length;
+
+    const total = 103 + validColorCount * 16 + fonts.length;
+    previewCount.textContent = 'Variables to generate: ' + total;
+  }
+
+  function hexToRgb(hex) {
+    const normalized = normalizeHex(hex);
     return {
-      r: parseInt(parsed.slice(1, 3), 16),
-      g: parseInt(parsed.slice(3, 5), 16),
-      b: parseInt(parsed.slice(5, 7), 16)
+      r: parseInt(normalized.slice(1, 3), 16),
+      g: parseInt(normalized.slice(3, 5), 16),
+      b: parseInt(normalized.slice(5, 7), 16)
     };
   }
 
   function rgbToHex(rgb) {
-    const channels = [rgb.r, rgb.g, rgb.b].map(function (channel) {
-      const safe = Math.max(0, Math.min(255, Math.round(channel)));
-      return safe.toString(16).padStart(2, '0').toUpperCase();
+    return (
+      '#' +
+      [rgb.r, rgb.g, rgb.b]
+        .map(function (channel) {
+          return Math.round(Math.max(0, Math.min(255, channel)))
+            .toString(16)
+            .padStart(2, '0')
+            .toUpperCase();
+        })
+        .join('')
+    );
+  }
+
+  function tintHex(baseHex, step) {
+    const rgb = hexToRgb(baseHex);
+    const ratio = step / 100;
+    return rgbToHex({
+      r: rgb.r * ratio + 255 * (1 - ratio),
+      g: rgb.g * ratio + 255 * (1 - ratio),
+      b: rgb.b * ratio + 255 * (1 - ratio)
     });
-
-    return '#' + channels.join('');
   }
 
-  function mixRgb(colorA, colorB, ratio) {
-    return {
-      r: colorA.r + (colorB.r - colorA.r) * ratio,
-      g: colorA.g + (colorB.g - colorA.g) * ratio,
-      b: colorA.b + (colorB.b - colorA.b) * ratio
-    };
+  function formatNumber(value) {
+    const fixed = Number(value.toFixed(4));
+    return String(fixed);
   }
 
-  function formatSize(value) {
-    const rounded = Math.round(value * 100) / 100;
-    if (Number.isInteger(rounded)) {
-      return rounded + 'px';
+  function csvEscape(value) {
+    const text = String(value);
+    if (/[",\n]/.test(text)) {
+      return '"' + text.replace(/"/g, '""') + '"';
     }
-    return rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + 'px';
+    return text;
   }
 
-  function setStatus(message, isError) {
-    formElements.status.textContent = message;
-    formElements.status.classList.toggle('error', Boolean(isError));
+  function row(name, type, value, unit) {
+    return [name, type, value, unit || '', 'false'];
   }
 
-  function syncColorFromPicker(colorInput, hexInput) {
-    hexInput.value = colorInput.value.toUpperCase();
-  }
+  function buildRows(colors, fonts, baseSize) {
+    const rows = [['Name', 'Type', 'Value', 'Unit', 'Linked Variable']];
 
-  function syncColorFromHex(hexInput, colorInput) {
-    const normalized = normalizeHex(hexInput.value);
-    if (normalized) {
-      colorInput.value = normalized;
-      hexInput.value = normalized;
-      return true;
-    }
-    return false;
-  }
+    colors.forEach(function (color) {
+      const normalizedHex = normalizeHex(color.hex);
+      const rgb = hexToRgb(normalizedHex);
 
-  function buildColorScale(baseHex, prefix) {
-    const base = hexToRgb(baseHex);
-    const white = { r: 255, g: 255, b: 255 };
-    const black = { r: 0, g: 0, b: 0 };
-    const values = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10];
+      rows.push(row('Brand/' + color.label, 'Color', normalizedHex, ''));
 
-    return values.map(function (step) {
-      let colorValue = baseHex;
-
-      if (step > 50 && step < 100) {
-        const ratio = (100 - step) / 50;
-        colorValue = rgbToHex(mixRgb(base, white, ratio));
-      } else if (step < 50) {
-        const ratio = (50 - step) / 40;
-        colorValue = rgbToHex(mixRgb(base, black, ratio));
+      for (let step = 10; step <= 90; step += 10) {
+        rows.push(row('Scale/' + color.label + '/' + step, 'Color', tintHex(normalizedHex, step), ''));
       }
+      rows.push(row('Scale/' + color.label + '/100', 'Color', normalizedHex, ''));
 
-      return [prefix + '/' + step, 'Color', colorValue, 'Colors'];
+      [10, 20, 40, 60, 80].forEach(function (alphaPercent) {
+        const alpha = (alphaPercent / 100).toFixed(2);
+        rows.push(row('Overlay/' + color.label + '/' + alphaPercent, 'Color', 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')', ''));
+      });
     });
-  }
 
-  function buildNeutralScale(name, solidHex) {
-    const scale = [
-      ['Color/' + name + '/100', 'Color', solidHex, 'Colors']
-    ];
+    [
+      ['Overlay/White/5', 'rgba(255,255,255,0.05)'],
+      ['Overlay/White/10', 'rgba(255,255,255,0.10)'],
+      ['Overlay/White/20', 'rgba(255,255,255,0.20)'],
+      ['Overlay/White/40', 'rgba(255,255,255,0.40)'],
+      ['Overlay/White/60', 'rgba(255,255,255,0.60)'],
+      ['Overlay/Black/5', 'rgba(0,0,0,0.05)'],
+      ['Overlay/Black/10', 'rgba(0,0,0,0.10)'],
+      ['Overlay/Black/20', 'rgba(0,0,0,0.20)'],
+      ['Overlay/Black/40', 'rgba(0,0,0,0.40)'],
+      ['Overlay/Black/60', 'rgba(0,0,0,0.60)']
+    ].forEach(function (entry) {
+      rows.push(row(entry[0], 'Color', entry[1], ''));
+    });
 
-    for (let step = 90; step >= 10; step -= 10) {
-      scale.push([
-        'Color/' + name + '/' + step,
-        'Color',
-        'rgba(' + (name === 'White' ? '255,255,255' : '0,0,0') + ',' + (step / 100).toFixed(1) + ')',
-        'Colors'
-      ]);
-    }
+    const accent = normalizeHex(colors[1] ? colors[1].hex : colors[0].hex);
+    [
+      ['Surface/Page', '#F8F8F8'],
+      ['Surface/White', '#FFFFFF'],
+      ['Surface/Dark', '#0E0E0E'],
+      ['Text/Primary', '#0E0E0E'],
+      ['Text/Muted', '#6B6760'],
+      ['Text/Inverse', '#FFFFFF'],
+      ['Text/Accent', accent],
+      ['Border/Default', '#D8D4CC'],
+      ['Border/Accent', accent]
+    ].forEach(function (token) {
+      rows.push(row(token[0], 'Color', token[1], ''));
+    });
 
-    return scale;
-  }
-
-  function buildRows() {
-    const primaryHex = normalizeHex(formElements.primaryHex.value);
-    const secondaryHex = normalizeHex(formElements.secondaryHex.value);
-    const displayFont = formElements.displayFont.value.trim();
-    const bodyFont = formElements.bodyFont.value.trim();
-    const baseSize = Number(formElements.baseSize.value);
-
-    if (!primaryHex || !secondaryHex) {
-      throw new Error('Please enter valid 6-digit hex colors for primary and secondary.');
-    }
-
-    if (!displayFont || !bodyFont) {
-      throw new Error('Please provide both display and body font names.');
-    }
-
-    if (!Number.isFinite(baseSize) || baseSize <= 0) {
-      throw new Error('Base font size must be a positive number.');
-    }
-
-    const rows = [['Name', 'Type', 'Value', 'Group']];
-
-    rows.push.apply(rows, buildColorScale(primaryHex, 'Color/Primary'));
-    rows.push.apply(rows, buildColorScale(secondaryHex, 'Color/Secondary'));
-    rows.push.apply(rows, buildNeutralScale('White', '#FFFFFF'));
-    rows.push.apply(rows, buildNeutralScale('Black', '#000000'));
-
-    rows.push(['Font/Display', 'Font', displayFont, 'Fonts']);
-    rows.push(['Font/Body', 'Font', bodyFont, 'Fonts']);
+    fonts.forEach(function (font) {
+      rows.push(row('Typography/Font-' + font.label, 'FontFamily', font.value, ''));
+    });
 
     const typeScale = [
-      { label: 'Display', multiplier: 3.5, height: '1.1', tracking: '-0.02em' },
-      { label: 'H1', multiplier: 2.5, height: '1.2', tracking: '-0.01em' },
-      { label: 'H2', multiplier: 2.0, height: '1.2', tracking: '-0.01em' },
-      { label: 'H3', multiplier: 1.5, height: '1.2', tracking: '-0.01em' },
-      { label: 'Body', multiplier: 1.0, height: '1.5', tracking: '0em' },
-      { label: 'Small', multiplier: 0.875, height: '1.5', tracking: '0em' }
+      ['Typography/Size-2xs', 0.6875],
+      ['Typography/Size-xs', 0.75],
+      ['Typography/Size-sm', 0.8125],
+      ['Typography/Size-base-sm', 0.875],
+      ['Typography/Size-base', 1.0],
+      ['Typography/Size-md', 1.0625],
+      ['Typography/Size-lg', 1.125],
+      ['Typography/Size-xl', 1.25],
+      ['Typography/Size-2xl', 1.375],
+      ['Typography/Size-3xl', 1.5],
+      ['Typography/Size-4xl', 1.75],
+      ['Typography/Size-5xl', 2.0],
+      ['Typography/Size-6xl', 2.25],
+      ['Typography/Size-7xl', 2.625],
+      ['Typography/Size-8xl', 3.0],
+      ['Typography/Size-display-sm', 3.5],
+      ['Typography/Size-display-md', 4.25],
+      ['Typography/Size-display-lg', 5.0]
     ];
 
-    typeScale.forEach(function (entry) {
-      rows.push(['Text/' + entry.label + '/Size', 'Size', formatSize(baseSize * entry.multiplier), 'Typography']);
-      rows.push(['Text/' + entry.label + '/Height', 'Number', entry.height, 'Typography']);
-      rows.push(['Text/' + entry.label + '/Tracking', 'Size', entry.tracking, 'Typography']);
+    typeScale.forEach(function (item) {
+      const pxSize = baseSize * item[1];
+      const rem = pxSize / baseSize;
+      rows.push(row(item[0], 'Size', formatNumber(rem), 'rem'));
     });
 
-    [4, 8, 16, 24, 32, 48, 64, 96].forEach(function (space) {
-      rows.push(['Space/' + space, 'Size', space + 'px', 'Spacing']);
+    [
+      ['Typography/Eyebrow', 0.6875],
+      ['Typography/Nav', 0.8125],
+      ['Typography/Body-SM', 0.875],
+      ['Typography/Body', 1],
+      ['Typography/Body-LG', 1.125],
+      ['Typography/H4', 1.375],
+      ['Typography/H3', 1.625],
+      ['Typography/H2', 2],
+      ['Typography/H1', 3.25],
+      ['Typography/Hero', 4.25]
+    ].forEach(function (item) {
+      rows.push(row(item[0], 'Size', formatNumber(item[1]), 'rem'));
     });
 
-    rows.push(['Radius/SM', 'Size', '4px', 'Radius']);
-    rows.push(['Radius/MD', 'Size', '8px', 'Radius']);
-    rows.push(['Radius/LG', 'Size', '16px', 'Radius']);
-    rows.push(['Radius/Round', 'Size', '999px', 'Radius']);
+    [
+      ['Typography/LS-Tight', -0.02],
+      ['Typography/LS-Normal', 0],
+      ['Typography/LS-Wide', 0.06],
+      ['Typography/LS-Wider', 0.08],
+      ['Typography/LS-Widest', 0.14],
+      ['Typography/LS-Caps', 0.16]
+    ].forEach(function (item) {
+      rows.push(row(item[0], 'Size', formatNumber(item[1]), 'em'));
+    });
+
+    [
+      ['Typography/LH-Tight', 1.08],
+      ['Typography/LH-Heading', 1.1],
+      ['Typography/LH-Body', 1.7],
+      ['Typography/LH-Relaxed', 1.85]
+    ].forEach(function (item) {
+      rows.push(row(item[0], 'Size', formatNumber(item[1]), 'em'));
+    });
+
+    [
+      ['Typography/Weight-Light', 300],
+      ['Typography/Weight-Regular', 400],
+      ['Typography/Weight-Medium', 500],
+      ['Typography/Weight-Bold', 700]
+    ].forEach(function (item) {
+      rows.push(row(item[0], 'Size', item[1], 'px'));
+    });
+
+    [1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 60, 80].forEach(function (value) {
+      rows.push(row('Spacing/' + value, 'Size', value * 4, 'px'));
+    });
+
+    [
+      ['Spacing/Padding-XS', 8],
+      ['Spacing/Padding-SM', 16],
+      ['Spacing/Padding-MD', 24],
+      ['Spacing/Padding-LG', 40],
+      ['Spacing/Padding-XL', 60],
+      ['Spacing/Padding-2XL', 80],
+      ['Spacing/Padding-Section', 120],
+      ['Spacing/Gap-XS', 8],
+      ['Spacing/Gap-SM', 16],
+      ['Spacing/Gap-MD', 24],
+      ['Spacing/Gap-LG', 40],
+      ['Spacing/Gap-XL', 60],
+      ['Spacing/Gap-Grid', 100],
+      ['Spacing/Border-Thin', 1],
+      ['Spacing/Border-Medium', 2],
+      ['Spacing/Border-Thick', 3],
+      ['Spacing/Radius-SM', 2],
+      ['Spacing/Radius-MD', 4],
+      ['Spacing/Radius-LG', 8],
+      ['Spacing/Radius-XL', 16],
+      ['Spacing/Radius-Full', 999],
+      ['Spacing/Nav-Height', 88],
+      ['Spacing/Container-Max', 1200]
+    ].forEach(function (item) {
+      rows.push(row(item[0], 'Size', item[1], 'px'));
+    });
 
     return rows;
   }
 
-  function csvEscape(value) {
-    const stringValue = String(value);
-    if (/[",\n]/.test(stringValue)) {
-      return '"' + stringValue.replace(/"/g, '""') + '"';
-    }
-    return stringValue;
-  }
-
   function rowsToCsv(rows) {
     return rows
-      .map(function (row) {
-        return row.map(csvEscape).join(',');
+      .map(function (r) {
+        return r.map(csvEscape).join(',');
       })
       .join('\n');
   }
 
   function downloadCsv(content) {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([content], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'webflow-variables.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'webflow-variables.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   }
 
-  formElements.primaryColor.addEventListener('input', function () {
-    syncColorFromPicker(formElements.primaryColor, formElements.primaryHex);
-  });
+  function initialize() {
+    defaultColors.forEach(createColorRow);
+    updatePreviewCount();
 
-  formElements.secondaryColor.addEventListener('input', function () {
-    syncColorFromPicker(formElements.secondaryColor, formElements.secondaryHex);
-  });
+    [fontInputs.Display, fontInputs.Body, fontInputs.Mono, baseSizeInput].forEach(function (input) {
+      input.addEventListener('input', updatePreviewCount);
+    });
+  }
 
-  formElements.primaryHex.addEventListener('input', function () {
-    syncColorFromHex(formElements.primaryHex, formElements.primaryColor);
-  });
-
-  formElements.secondaryHex.addEventListener('input', function () {
-    syncColorFromHex(formElements.secondaryHex, formElements.secondaryColor);
-  });
-
-  formElements.generateButton.addEventListener('click', function () {
-    try {
-      if (!syncColorFromHex(formElements.primaryHex, formElements.primaryColor) || !syncColorFromHex(formElements.secondaryHex, formElements.secondaryColor)) {
-        throw new Error('Please enter valid 6-digit hex colors before generating.');
-      }
-
-      const rows = buildRows();
-      generatedCsv = rowsToCsv(rows);
-      formElements.downloadButton.disabled = false;
-      setStatus('Generated ' + (rows.length - 1) + ' variables. Ready to download.', false);
-    } catch (error) {
-      generatedCsv = '';
-      formElements.downloadButton.disabled = true;
-      setStatus(error.message, true);
-    }
-  });
-
-  formElements.downloadButton.addEventListener('click', function () {
-    if (!generatedCsv) {
-      setStatus('Generate variables first.', true);
+  addColorButton.addEventListener('click', function () {
+    const count = colorList.querySelectorAll('.color-row').length;
+    if (count >= MAX_COLORS) {
+      status.textContent = 'You can add up to 5 colors.';
       return;
     }
 
-    downloadCsv(generatedCsv);
-    setStatus('Downloaded webflow-variables.csv.', false);
+    createColorRow({ label: 'Color ' + (count + 1), hex: '#999999' });
+    status.textContent = '';
+    updatePreviewCount();
   });
+
+  removeColorButton.addEventListener('click', function () {
+    const rows = colorList.querySelectorAll('.color-row');
+    if (rows.length <= MIN_COLORS) {
+      status.textContent = 'At least 2 colors are required.';
+      return;
+    }
+
+    colorList.removeChild(rows[rows.length - 1]);
+    status.textContent = '';
+    updatePreviewCount();
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+
+    const colors = getColorInputs();
+    const fonts = getFontInputs();
+    const baseSize = Number(baseSizeInput.value);
+
+    let valid = true;
+
+    if (colors.length < MIN_COLORS || colors.length > MAX_COLORS) {
+      status.textContent = 'Please provide between 2 and 5 colors.';
+      return;
+    }
+
+    colors.forEach(function (color) {
+      if (!validateColorRow(color.row)) {
+        valid = false;
+      }
+    });
+
+    if (!fontInputs.Display.value.trim() || !fontInputs.Body.value.trim()) {
+      status.textContent = 'Display and Body font names are required.';
+      valid = false;
+    }
+
+    if (fonts.length < 2 || fonts.length > 3) {
+      status.textContent = 'Provide 2 or 3 font names.';
+      valid = false;
+    }
+
+    if (!baseSize || baseSize <= 0) {
+      status.textContent = 'Base text size must be a positive number.';
+      valid = false;
+    }
+
+    if (!valid) {
+      updatePreviewCount();
+      return;
+    }
+
+    const rows = buildRows(colors, fonts, baseSize);
+    const csv = rowsToCsv(rows);
+    downloadCsv(csv);
+    status.textContent = 'Generated and downloaded ' + (rows.length - 1) + ' variables.';
+    updatePreviewCount();
+  });
+
+  initialize();
 })();

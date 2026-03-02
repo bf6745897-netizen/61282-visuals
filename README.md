@@ -1,17 +1,18 @@
-# Webflow Variables CSV Generator
+# Webflow Variables Generator
 
-A no-install, no-build, framework-free GUI for generating a Webflow Variables CSV file.
+Single-page app (HTML/CSS/vanilla JS) for generating a Webflow Variables Utility CSV.
 
-## Run locally
+## Usage
 
-1. Open `index.html` directly in your browser (double-click works).
-2. Fill in the token inputs.
-3. Click **Generate**.
-4. Click **Download CSV** to download `webflow-variables.csv`.
+1. Open `index.html` in a browser.
+2. Enter 2–5 labeled hex colors, 2–3 fonts, and a base text size.
+3. Click **Generate & Download CSV**.
+4. Import `webflow-variables.csv` into Webflow Variables Utility.
 
-## Notes
+## Output format
 
-- Built with pure HTML, CSS, and vanilla JavaScript.
-- Primary and secondary color inputs include both color pickers and hex fields kept in sync.
-- CSV format is exactly: `Name,Type,Value,Group`.
-- Download button stays disabled until a successful generation.
+CSV columns are fixed and emitted in this order:
+
+`Name,Type,Value,Unit,Linked Variable`
+
+`Linked Variable` is always `false`.
